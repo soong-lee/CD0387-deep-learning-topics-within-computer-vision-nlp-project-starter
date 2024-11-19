@@ -13,19 +13,20 @@ import json
 import logging
 import os
 import sys
+from io import BytesIO
+
+from PIL import ImageFile
+# to take care of the error: "image file is truncated (148 bytes not processed)"
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-from PIL import ImageFile
-from io import BytesIO
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-
 #TODO: Import dependencies for Debugging andd Profiling
 import smdebug.pytorch as smd
 
-def test(model, test_loader, criterion, device, hook):
+def test(model, validation_loader, criterion, device, hook):
     '''
     TODO: Complete this function that can take a model and a 
           testing data loader and will get the test accuray/loss of the model
@@ -37,29 +38,28 @@ def test(model, test_loader, criterion, device, hook):
     hook.set_mode(smd.modes.EVAL)
 
     with torch.no_grad():    
-        for data, target in test_loader:
+        for data, target in validation_loader:
             # use GPU if available 
             data=data.to(device)
             target=target.to(device)
 
             output = model(data)
-            test_loss += criterion(output, target, size_average=False).item()  # sum up batch loss
-            pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
+            test_loss += criterion(output, target).item()  # sum up batch loss
+            pred = output.argmax(1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
-            average_loss = test_loss / len(test_loader.dataset)
-            average_accuracy = correct / len(test_loader.dataset)
+            average_loss = test_loss / len(validation_loader.dataset)
+            average_accuracy = correct / len(validation_loader.dataset)
 
             logger.info(f"Average Test Loss: {average_loss}")
             logger.info(f"Average Test Accuracy: {average_accuracy}")
 
-def train(model, train_loader, validation_loader, criterion, optimizer, epochs, device, hook):
+def train(model, train_loader, criterion, optimizer, epochs, device, hook):
     '''
     TODO: Complete this function that can take a model and
           data loaders for training and will get train the model
           Remember to include any debugging/profiling hooks that you might need
     '''
-    # training set:
     for epoch in range(1, epochs + 1):
         hook.set_mode(smd.modes.TRAIN)
         model.train()
@@ -84,26 +84,6 @@ def train(model, train_loader, validation_loader, criterion, optimizer, epochs, 
                         loss.item()
                     )
                 )
-
-        # validation set:
-        hook.set_mode(smd.modes.EVAL)
-        model.eval()
-        correct = 0
-
-        with torch.no_grad():    
-        for data, target in validation_loader:
-            # use GPU if available 
-            data=data.to(device)
-            target=target.to(device)
-
-            output = model(data)
-            test_loss += criterion(output, target, size_average=False).item()  # sum up batch loss
-            pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
-
-            average_accuracy = correct / len(validation_loader.dataset)
-
-            logger.info(f"Average Validation Accuracy: {average_accuracy}")
     
 def net():
     '''
@@ -132,30 +112,26 @@ def create_data_loaders(data, batch_size):
     depending on whether you need to use data loaders or not
     '''
     train_path = os.path.join(data, 'train')
-    test_path = os.path.join(data, 'test')
     validation_path = os.path.join(data, 'valid')
 
     train_transform = transforms.Compose([
-            transforms.RandomResizedCrop((300, 200)),
-            transforms.Resize(256),
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ToTensor(),
-    ])
+            transforms.Resize((224, 224)),
+            transforms.ToTensor()
+        ])
 
     test_transform = transforms.Compose([
-                transforms.Resize((256)),
-                transforms.ToTensor(),
+            transforms.RandomResizedCrop((224, 224)),
+            transforms.ToTensor()
         ])
 
     train_dataset = torchvision.datasets.ImageFolder(root=train_path, transform=train_transform)    
-    test_dataset = torchvision.datasets.ImageFolder(root=test_path, transform=test_transform)
     validation_dataset = torchvision.datasets.ImageFolder(root=validation_path, transform=test_transform)
 
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
     validation_data_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=batch_size)
 
-    return train_data_loader, test_data_loader, validation_data_loader
+    return train_data_loader, validation_data_loader
 
 def main(args):
     '''
@@ -180,13 +156,13 @@ def main(args):
     TODO: Call the train function to start training your model
     Remember that you will need to set up a way to get training data from S3
     '''
-    train_loader, test_loader, validation_loader = create_data_loaders(data=args.data_dir, batch_size=args.batch_size)
-    model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device, hook)
+    train_loader, validation_loader = create_data_loaders(data=args.data_dir, batch_size=args.batch_size)
+    model=train(model, train_loader, loss_criterion, optimizer, args.epochs, device, hook)
     
     '''
     TODO: Test the model to see its accuracy
     '''
-    test(model, test_loader, loss_criterion, device, hook)
+    test(model, validation_loader, loss_criterion, device, hook)
     
     '''
     TODO: Save the trained model
@@ -198,14 +174,11 @@ if __name__=='__main__':
     '''
     TODO: Specify any training args that you might need
     '''
-    parser.add_argument('--batch_size', type=int)
+    parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--epochs', type=int, default=2)
-    parser.add_argument('--learning_rate', type=float)
-    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
-    parser.add_argument("--current_host", type=str, default=os.environ["SM_CURRENT_HOST"])
+    parser.add_argument('--learning_rate', type=float, default=0.01)
     parser.add_argument("--model_dir", type=str, default=os.environ["SM_MODEL_DIR"])
-    parser.add_argument("--data_dir", type=str, default=os.environ["SM_CHANNEL_TRAINING"])
-    parser.add_argument("--num_gpus", type=int, default=os.environ["SM_NUM_GPUS"])
+    parser.add_argument("--data_dir", type=str, default=os.environ["SM_CHANNEL_TRAIN"])
     
     args=parser.parse_args()
     
