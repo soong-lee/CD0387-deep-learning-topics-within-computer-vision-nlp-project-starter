@@ -51,8 +51,8 @@ def test(model, validation_loader, criterion, device, hook):
             average_loss = test_loss / len(validation_loader.dataset)
             average_accuracy = correct / len(validation_loader.dataset)
 
-            logger.info(f"Average Test Loss: {average_loss}")
-            logger.info(f"Average Test Accuracy: {average_accuracy}")
+            logger.info(f"Test Average Loss: {average_loss}")
+            logger.info(f"Test Average Accuracy: {average_accuracy}")
 
 def train(model, train_loader, criterion, optimizer, epochs, device, hook):
     '''
@@ -84,6 +84,7 @@ def train(model, train_loader, criterion, optimizer, epochs, device, hook):
                         loss.item()
                     )
                 )
+    return model
     
 def net():
     '''
@@ -97,6 +98,7 @@ def net():
 
     num_features = model.fc.in_features
     num_classes = 133
+    #num_classes = 10  # for diagnosis
 
     # add fully connected layer 
     model.fc = nn.Sequential(
