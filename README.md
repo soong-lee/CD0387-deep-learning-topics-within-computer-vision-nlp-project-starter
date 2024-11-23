@@ -1,41 +1,90 @@
-# Image Classification using AWS SageMaker
+## Image Classification using AWS SageMaker  
+This project is to classify 133 dog breeds using a pre-trained algorithm. It consists of three main parts; finding optimal hyperparameters, setting up a modeling using the found hyperparameters, and setting up a deployment of the modeling at Endpoints in SageMaker.  
 
-Use AWS Sagemaker to train a pretrained model that can perform image classification by using the Sagemaker profiling, debugger, hyperparameter tuning and other good ML engineering practices. This can be done on either the provided dog breed classication data set or one of your choice.
+### 1. Data set up  
+- Data was downloaded from a Udacity's AWS s3 bucket.  
+        - https://s3-us-west-1.amazonaws.com/udacity-aind/dog-project/dogImages.zip  
+- This file was unzipped and uploaded to the project folder at s3 bucket.  
+- The unzipped files contains images of 133 dog breeds with 3 subfolders; train, valid, and test.
 
-## Project Set Up and Installation
-Enter AWS through the gateway in the course and open SageMaker Studio. 
-Download the starter files.
-Download/Make the dataset available. 
+### 2. Hyperparameter optimization  
+Three hyperparameters are optimized after setting up a neural network using ResNet50 pre-trained layers with a fully connected top layer added and trained with the dog images.  
+Hyperparameters optimized: learning rate, batch size, and epoch  
+```
+hyperparameter_ranges = {
+    'learning_rate': ContinuousParameter(0.001, 0.1),
+    'batch_size': CategoricalParameter([16 ,32, 64, 128, 256])
+}
+```
+The optimal hyperparameters found are: batch_size= 64, learning_rate = 0.03620856736835261.  
 
-## Dataset
-The provided dataset is the dogbreed classification dataset which can be found in the classroom.
-The project is designed to be dataset independent so if there is a dataset that is more interesting or relevant to your work, you are welcome to use it to complete the project.
+<img src="screen_captures/hyperparam_tuning.jpg">
 
-### Access
-Upload the data to an S3 bucket through the AWS Gateway so that SageMaker has access to the data. 
+### 3. Model training
 
-## Hyperparameter Tuning
-What kind of model did you choose for this experiment and why? Give an overview of the types of parameters and their ranges used for the hyperparameter search
+Using the hyperparameters found in the previous step, the fully connected layers were further trained.  
+Script used: train_model.py  
+    - This file trains a model with the hyperparameters obtained from the previous step. Its content is similar to hpo.py with a slight change with the hyperparameters implemented. The images from train folder were used for training, and the ones from verify folder were used for verification. The images in test folder were never touched.  
+```
+model.fc = nn.Sequential(
+               nn.Linear(num_features, 128),
+               nn.ReLU(),
+               nn.Linear(128, num_classes))
+```
 
-Remember that your README should:
-- Include a screenshot of completed training jobs
-- Logs metrics during the training process
-- Tune at least two hyperparameters
-- Retrieve the best best hyperparameters from all your training jobs
+```
+estimator = PyTorch( 
+    entry_point='train_model.py',
+    role=role,
+    instance_count=1,
+    base_job_name='debugger-dog-breeds-job',
+    instance_type='ml.m5.2xlarge', 
+    framework_version='1.9',
+    py_version='py38',
+    hyperparameters=best_hyperparameters,
+    metric_definitions=metric_definitions,
+    rules = rules,
+    profiler_config = profiler_config,
+    debugger_hook_config = debugger_hook_config
+)
 
-## Debugging and Profiling
-**TODO**: Give an overview of how you performed model debugging and profiling in Sagemaker
+estimator.fit({'train': data_path}, wait=True)
+```
 
-### Results
-**TODO**: What are the results/insights did you get by profiling/debugging your model?
+### 4. Debugging and profiling
 
-**TODO** Remember to provide the profiler html/pdf file in your submission.
+Debugging was performed using CloudWatch logs, and here are some of the cases of debugging.  
+- There was an error message with exit due to "cannot assign to null". From the CloudWatch, I was able to fix the mistake I made in the train_model.py, where "return model" statement was missing.
+- During the model deployment step, I kept getting the predict function invocation timeout. I spent days to diagnose this issue with the help of the CloudWatch logs. The log was saying "ModuleNotFoundError: No module named 'nvgpu'". Finally excluding all the possible causes one by one, I figured out that Endpoints has some issue with running GPU, which my mentor shared the same assessment. Per suggestion by the mentor, I installed nvgpu module from the jupyter notebook terminal, the problem did not go away. When I commented out the lines with GPU device at the train_model.py script, it worked.
 
+Cross entropy loss vs. training step was plotted to see if train and verification process went reasonably. 
+<img src="screen_captures/cross_entropy_loss.jpg">
 
-## Model Deployment
-**TODO**: Give an overview of the deployed model and instructions on how to query the endpoint with a sample input.
+### 5. Model deploying and predictions
 
-**TODO** Remember to provide a screenshot of the deployed active endpoint in Sagemaker.
+inference.py script is used to deploy the model to SageMaker. Since the prediction does not cosume computer power, ml.t2.medium instance type is used.  
+```
+pytorch_inference_model = PyTorchModel(
+            entry_point="inference.py",
+            role=role,
+            model_data=model_location,
+            framework_version="1.9",
+            py_version="py38",
+            predictor_cls=ImagePredictor,
+)
 
-## Standout Suggestions
-**TODO (Optional):** This is where you can provide information about any standout suggestions that you have attempted.
+predictor = pytorch_inference_model.deploy(initial_instance_count=1, instance_type='ml.t2.medium')
+```
+
+Endpoint was set up successfully as follows.  
+<img src="screen_captures/endpoint.jpg">
+
+Three predictions are made. It failed to correctly predict Maltese, but succeeded in Basenji and Norwich Terrier.  
+<p float="left">
+  <img src="screen_captures/maltese_prediction.jpg" width="400" />
+  <img src="screen_captures/basenji_prediction.jpg" width="200" /> 
+  <img src="screen_captures/norwich_terrier_prediction.jpg" width="500" />
+</p>
+
+### Insights from the model
+This was the first time I developed a model using a pre-trained algorithm. The result is quite impressive, and most of all it worked. Going through setting up the Endpoint in SageMaker and finally running the predictions was an awesome experience. Along the way there are a few points in SageMaker that I could not quite understand, but that will be my next challenge.

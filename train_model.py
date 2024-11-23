@@ -40,8 +40,8 @@ def test(model, validation_loader, criterion, device, hook):
     with torch.no_grad():    
         for data, target in validation_loader:
             # use GPU if available 
-            data=data.to(device)
-            target=target.to(device)
+            #data=data.to(device)
+            #target=target.to(device)
 
             output = model(data)
             test_loss += criterion(output, target).item()  # sum up batch loss
@@ -66,8 +66,8 @@ def train(model, train_loader, criterion, optimizer, epochs, device, hook):
 
         for batch_idx, (data, target) in enumerate(train_loader, 1):
             # use GPU if available 
-            data=data.to(device)
-            target=target.to(device)
+            #data=data.to(device)
+            #target=target.to(device)
             
             optimizer.zero_grad()
             output = model(data)
@@ -84,8 +84,10 @@ def train(model, train_loader, criterion, optimizer, epochs, device, hook):
                         loss.item()
                     )
                 )
+                
     return model
-    
+
+
 def net():
     '''
     TODO: Complete this function that initializes your model
@@ -144,9 +146,10 @@ def main(args):
     hook = smd.Hook.create_from_json_file()
     hook.register_hook(model)
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model=model.to(device)
+    #model=model.to(device)
+    device = 'cpu'
     
     '''
     TODO: Create your loss and optimizer
