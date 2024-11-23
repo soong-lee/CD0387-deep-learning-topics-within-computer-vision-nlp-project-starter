@@ -55,7 +55,7 @@ estimator.fit({'train': data_path}, wait=True)
 
 Debugging was performed using CloudWatch logs, and here are some of the cases of debugging.  
 - There was an error message with exit due to "cannot assign to null". From the CloudWatch, I was able to fix the mistake I made in the train_model.py, where "return model" statement was missing.
-- During the model deployment step, I kept getting the predict function invocation timeout. I spent days to diagnose this issue with the help of the CloudWatch logs. The log was saying "ModuleNotFoundError: No module named 'nvgpu'". Finally excluding all the possible causes one by one, I figured out that Endpoints has some issue with running GPU, which my mentor shared the same assessment. Per suggestion by the mentor, I installed nvgpu module from the jupyter notebook terminal, the problem did not go away. When I commented out the lines with GPU device at the train_model.py script, it worked.
+- During the model deployment step, I kept getting the predict function invocation timeout. I spent days to diagnose this issue with the help of the CloudWatch logs. The log was saying "ModuleNotFoundError: No module named 'nvgpu'". Finally excluding all the possible causes one by one, I figured out that Endpoints has some issue with running GPU, which my mentor shared the same assessment. Per suggestion by the mentor, I installed nvgpu module from the jupyter notebook terminal, the problem did not go away. When I commented out the lines with GPU device at the inference.py script, it worked.
 
 Cross entropy loss vs. training step was plotted to see if train and verification process went reasonably. 
 <img src="screen_captures/cross_entropy_loss.jpg">

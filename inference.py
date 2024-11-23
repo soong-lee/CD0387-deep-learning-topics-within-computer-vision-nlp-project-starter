@@ -28,7 +28,9 @@ def model_fn(model_dir):
                    nn.Linear(num_features, 128),
                    nn.ReLU(),
                    nn.Linear(128, num_classes))
-    
+
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #model = model.to(device)
     with open(os.path.join(model_dir, "model.pth"), 'rb') as f:
         model.load_state_dict(torch.load(f))
     model.eval()
@@ -42,7 +44,9 @@ def input_fn(request_body, content_type):
 def predict_fn(input_object, model):
     transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
     input_object = transform(input_object)
-    
+
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #model = model.to(device)
     with torch.no_grad():
         prediction = model(input_object.unsqueeze(0))
     return prediction
